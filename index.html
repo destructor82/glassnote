@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<title>GlassNote</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;1,9..144,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<style>
+:root{
+  --bg:#f5e8e8;--bg2:#eedada;
+  --surface:rgba(255,255,255,0.38);--surface-hov:rgba(255,255,255,0.55);--surface-deep:rgba(255,255,255,0.18);
+  --border:rgba(255,255,255,0.65);--border2:rgba(255,255,255,0.30);
+  --shadow:rgba(180,60,60,0.15);--shadow2:rgba(140,40,40,0.10);
+  --text:#1a2a38;--text2:#5a2a2a;--text3:#a06060;
+  --accent:#e53535;--accent2:#b91c1c;--accent-glass:rgba(229,53,53,0.18);
+  --ai:#7c3aed;--ai2:#6d28d9;--ai-glass:rgba(124,58,237,0.12);--ai-border:rgba(124,58,237,0.25);
+  --red:#ef4444;--green:#22c55e;--amber:#f59e0b;
+  --tab-active:rgba(255,255,255,0.70);--tab-inactive:rgba(255,255,255,0.20);
+  --input-bg:rgba(255,255,255,0.45);
+  --radius:18px;--radius-sm:10px;--blur:22px;--transition:0.28s cubic-bezier(.4,0,.2,1);
+}
+[data-theme="dark"]{
+  --bg:#0d1520;--bg2:#111e2e;
+  --surface:rgba(255,255,255,0.06);--surface-hov:rgba(255,255,255,0.11);--surface-deep:rgba(255,255,255,0.03);
+  --border:rgba(255,255,255,0.12);--border2:rgba(255,255,255,0.06);
+  --shadow:rgba(0,0,0,0.40);--shadow2:rgba(0,0,0,0.25);
+  --text:#e8f0f8;--text2:#a0b8d0;--text3:#5a7a98;
+  --accent:#f87171;--accent2:#fca5a5;--accent-glass:rgba(248,113,113,0.12);
+  --ai:#a78bfa;--ai2:#8b5cf6;--ai-glass:rgba(167,139,250,0.10);--ai-border:rgba(167,139,250,0.22);
+  --tab-active:rgba(255,255,255,0.10);--tab-inactive:rgba(255,255,255,0.04);
+  --input-bg:rgba(255,255,255,0.07);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);transition:background var(--transition),color var(--transition);overflow:hidden;position:relative}
+
+.bg-blobs{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+.blob{position:absolute;border-radius:50%;filter:blur(80px);opacity:.55;animation:drift 14s ease-in-out infinite alternate}
+.blob1{width:500px;height:500px;background:radial-gradient(circle,#fca5a5 0%,#ef444450 60%,transparent 80%);top:-120px;left:-100px}
+.blob2{width:420px;height:420px;background:radial-gradient(circle,#34d39940 0%,#06b6d430 60%,transparent 80%);bottom:-80px;right:-80px;animation-delay:-5s}
+.blob3{width:300px;height:300px;background:radial-gradient(circle,#c4b5fd40 0%,#7c3aed20 60%,transparent 80%);bottom:30%;left:20%;animation-delay:-9s}
+[data-theme="dark"] .blob1{background:radial-gradient(circle,#7f1d1d 0%,#450a0a80 60%,transparent 80%);opacity:.7}
+[data-theme="dark"] .blob2{background:radial-gradient(circle,#064e3b30 0%,#0e7490 30%,transparent 80%);opacity:.5}
+[data-theme="dark"] .blob3{background:radial-gradient(circle,#4c1d9560 0%,#3b0764 60%,transparent 80%);opacity:.6}
+@keyframes drift{0%{transform:translate(0,0) scale(1)}100%{transform:translate(40px,30px) scale(1.08)}}
+
+#app{position:relative;z-index:1;display:flex;flex-direction:column;height:100dvh;max-width:480px;margin:0 auto;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+.glass{background:var(--surface);backdrop-filter:blur(var(--blur)) saturate(1.6);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.6);border:1px solid var(--border);box-shadow:0 8px 32px var(--shadow),0 1px 0 var(--border) inset,0 -1px 0 var(--border2) inset}
+
+/* topbar */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 8px;flex-shrink:0}
+.logo{font-family:'Fraunces',serif;font-size:1.38rem;font-weight:600;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:-.02em}
+.logo span{font-style:italic;font-weight:300}
+.topbar-right{display:flex;gap:5px;align-items:center}
+.icon-btn{width:34px;height:34px;border:none;cursor:pointer;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--surface);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));border:1px solid var(--border);color:var(--text);transition:background var(--transition),transform .15s;box-shadow:0 4px 12px var(--shadow2);position:relative;flex-shrink:0}
+.icon-btn:active{transform:scale(.91)}
+.icon-btn svg{width:16px;height:16px}
+.sync-dot{width:7px;height:7px;border-radius:50%;position:absolute;top:3px;right:3px;border:1.5px solid var(--bg);transition:background .3s}
+.sync-dot.synced{background:var(--green)}.sync-dot.syncing{background:var(--amber);animation:blink 1s infinite}.sync-dot.error{background:var(--red)}.sync-dot.offline{background:var(--text3)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* toolbar */
+.toolbar{display:flex;gap:5px;padding:0 14px 8px;flex-shrink:0;overflow-x:auto;scrollbar-width:none}
+.toolbar::-webkit-scrollbar{display:none}
+.tool-btn{display:flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 11px;border:none;cursor:pointer;border-radius:20px;font-family:'DM Sans',sans-serif;font-size:.71rem;font-weight:500;background:var(--surface);color:var(--text2);border:1px solid var(--border);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:all .18s;box-shadow:0 2px 8px var(--shadow2)}
+.tool-btn:active{transform:scale(.94)}
+.tool-btn svg{width:12px;height:12px;flex-shrink:0}
+.tool-btn.danger{color:var(--red);border-color:rgba(229,53,53,.25);background:rgba(229,53,53,.08)}
+.tool-btn.primary{color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;box-shadow:0 3px 10px rgba(229,53,53,.3)}
+.tool-btn.ai-btn{color:var(--ai);border-color:var(--ai-border);background:var(--ai-glass)}
+
+/* tabs */
+.tabs-wrap{padding:0 14px 8px;flex-shrink:0}
+.tabs{display:flex;gap:4px;padding:4px;border-radius:var(--radius)}
+.tab-btn{flex:1;padding:8px 2px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:.72rem;font-weight:500;border-radius:calc(var(--radius) - 4px);background:var(--tab-inactive);color:var(--text2);transition:all var(--transition);display:flex;flex-direction:column;align-items:center;gap:3px}
+.tab-btn svg{width:15px;height:15px;opacity:.7}
+.tab-btn.active{background:var(--tab-active);color:var(--accent);box-shadow:0 3px 12px var(--shadow),0 1px 0 var(--border) inset}
+.tab-btn.active svg{opacity:1}
+.tab-btn[data-tab="ai"].active{color:var(--ai)}
+
+/* panels */
+.panel-wrap{flex:1;overflow:hidden;padding:0 14px}
+.panel{display:none;flex-direction:column;gap:10px;height:100%;overflow-y:auto;padding-bottom:100px;scrollbar-width:none}
+.panel::-webkit-scrollbar{display:none}
+.panel.active{display:flex}
+.section-label{font-family:'Fraunces',serif;font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:4px 2px 2px}
+
+/* note card */
+.note-card{border-radius:var(--radius);overflow:hidden;transition:transform var(--transition);position:relative}
+.note-card:active{transform:scale(.986)}
+.note-header{display:flex;align-items:center;justify-content:space-between;padding:11px 13px 5px}
+.note-title-input,.note-body-input{width:100%;border:none;background:transparent;color:var(--text);font-family:'DM Sans',sans-serif;outline:none;resize:none}
+.note-title-input{font-size:.95rem;font-weight:500;padding:0 13px;letter-spacing:-.01em}
+.note-title-input::placeholder,.note-body-input::placeholder{color:var(--text3)}
+.note-body-input{font-size:.84rem;line-height:1.6;color:var(--text2);padding:3px 13px 11px;min-height:58px}
+.note-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.note-meta{font-size:.69rem;color:var(--text3);padding:0 13px 8px}
+.delete-btn{width:24px;height:24px;border:none;cursor:pointer;border-radius:50%;background:var(--surface-deep);color:var(--text3);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .2s;border:1px solid var(--border2)}
+.note-card:hover .delete-btn,.note-card:focus-within .delete-btn{opacity:1}
+.delete-btn svg{width:11px;height:11px}
+.add-card{border-radius:var(--radius);border:1.5px dashed var(--border);padding:11px 13px;display:flex;align-items:center;gap:9px;cursor:pointer;background:var(--surface-deep);color:var(--text3);font-size:.84rem;transition:background var(--transition),border-color var(--transition)}
+.add-card:hover{background:var(--surface);border-color:var(--accent)}
+.add-card svg{width:16px;height:16px;flex-shrink:0;color:var(--accent)}
+
+/* task */
+.task-group{display:flex;flex-direction:column;gap:3px}
+.task-item{display:flex;align-items:flex-start;gap:9px;padding:10px 11px;border-radius:var(--radius-sm)}
+.task-check{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--border);background:var(--surface-deep);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s;margin-top:1px}
+.task-check.done{background:var(--green);border-color:var(--green)}
+.task-check.done svg{opacity:1}
+.task-check svg{width:10px;height:10px;color:#fff;opacity:0;transition:opacity .2s}
+.task-text{flex:1;min-width:0}
+.task-input{width:100%;border:none;background:transparent;color:var(--text);font-family:'DM Sans',sans-serif;font-size:.87rem;outline:none}
+.task-input::placeholder{color:var(--text3)}
+.task-input.done-text{text-decoration:line-through;color:var(--text3)}
+.task-due{font-size:.69rem;color:var(--text3);margin-top:1px}
+.task-prio{width:5px;height:5px;border-radius:50%;flex-shrink:0;margin-top:8px}
+.prio-high{background:var(--red)}.prio-med{background:var(--amber)}.prio-low{background:var(--green)}
+
+/* appt */
+.appt-card{border-radius:var(--radius);padding:11px 13px;display:grid;grid-template-columns:50px 1fr auto;gap:0 11px;align-items:start}
+.appt-time{display:flex;flex-direction:column;align-items:center;padding-top:2px}
+.appt-time-main{font-family:'Fraunces',serif;font-size:1.15rem;font-weight:600;line-height:1;color:var(--accent)}
+.appt-time-ampm{font-size:.62rem;color:var(--text3);margin-top:2px;text-transform:uppercase;letter-spacing:.06em}
+.appt-body{grid-column:2}
+.appt-title{font-size:.9rem;font-weight:500}
+.appt-meta{display:flex;gap:5px;flex-wrap:wrap;margin-top:3px}
+.appt-tag{font-size:.67rem;padding:2px 6px;border-radius:20px;background:var(--accent-glass);color:var(--accent);border:1px solid rgba(229,53,53,.2)}
+.appt-actions{grid-column:3}
+.tag-work{background:rgba(99,102,241,.15);color:#6366f1;border-color:rgba(99,102,241,.25)}
+.tag-personal{background:rgba(34,197,94,.12);color:#16a34a;border-color:rgba(34,197,94,.25)}
+.tag-health{background:rgba(239,68,68,.12);color:#dc2626;border-color:rgba(239,68,68,.25)}
+[data-theme="dark"] .tag-personal{color:#4ade80}[data-theme="dark"] .tag-health{color:#f87171}[data-theme="dark"] .tag-work{color:#a5b4fc}
+
+/* calendar */
+.calendar-wrap{border-radius:var(--radius);padding:13px;flex-shrink:0}
+.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+.cal-month{font-family:'Fraunces',serif;font-size:1rem;font-weight:600}
+.cal-nav{background:none;border:none;cursor:pointer;color:var(--text2);width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:background .2s}
+.cal-nav:hover{background:var(--surface-hov)}
+.cal-nav svg{width:14px;height:14px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-dow{text-align:center;font-size:.62rem;color:var(--text3);padding:3px 0;text-transform:uppercase;letter-spacing:.04em}
+.cal-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:.79rem;border-radius:50%;cursor:pointer;transition:all .15s;color:var(--text2);position:relative}
+.cal-day:hover{background:var(--surface-hov)}
+.cal-day.today{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:600}
+.cal-day.has-event::after{content:'';position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:3px;height:3px;border-radius:50%;background:var(--accent)}
+.cal-day.today.has-event::after{background:#fff}
+.cal-day.other-month{opacity:.35}
+.cal-day.selected{box-shadow:0 0 0 2px var(--accent)}
+
+/* ══ CLAUDE AI PANEL ══ */
+#panel-ai{display:none;flex-direction:column;height:100%;gap:0;padding-bottom:0}
+#panel-ai.active{display:flex}
+
+.ai-key-banner{
+  border-radius:var(--radius);padding:14px 16px;
+  background:var(--ai-glass);border:1px solid var(--ai-border);
+  display:flex;flex-direction:column;gap:10px;flex-shrink:0;
+}
+.ai-key-banner.hidden{display:none}
+.ai-key-row{display:flex;gap:8px;align-items:center}
+.ai-key-label{font-size:.75rem;color:var(--ai);font-weight:500;letter-spacing:.04em;text-transform:uppercase}
+.ai-key-input{flex:1;padding:8px 12px;border-radius:var(--radius-sm);border:1px solid var(--ai-border);background:var(--input-bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:.83rem;outline:none}
+.ai-key-input:focus{border-color:var(--ai)}
+.ai-key-save{padding:8px 14px;border:none;cursor:pointer;border-radius:var(--radius-sm);background:linear-gradient(135deg,var(--ai),var(--ai2));color:#fff;font-size:.8rem;font-weight:500;white-space:nowrap;flex-shrink:0}
+.ai-key-hint{font-size:.71rem;color:var(--text3);line-height:1.4}
+.ai-key-hint a{color:var(--ai);text-decoration:none}
+
+.ai-context-strip{
+  display:flex;gap:6px;padding:0 0 8px;flex-shrink:0;overflow-x:auto;scrollbar-width:none;
+}
+.ai-context-strip::-webkit-scrollbar{display:none}
+.ctx-chip{
+  display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:20px;
+  font-size:.7rem;font-weight:500;white-space:nowrap;cursor:pointer;border:none;
+  background:var(--surface);color:var(--text2);border:1px solid var(--border);
+  transition:all .18s;
+}
+.ctx-chip.on{background:var(--ai-glass);color:var(--ai);border-color:var(--ai-border)}
+.ctx-chip svg{width:11px;height:11px}
+
+.ai-messages{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 0 12px;scrollbar-width:none}
+.ai-messages::-webkit-scrollbar{display:none}
+
+.msg-row{display:flex;gap:8px;align-items:flex-end;animation:fadeUp .25s ease both}
+.msg-row.user{flex-direction:row-reverse}
+.msg-avatar{width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:600}
+.msg-avatar.ai-av{background:linear-gradient(135deg,var(--ai),var(--ai2));color:#fff}
+.msg-avatar.user-av{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+.msg-bubble{
+  max-width:78%;padding:10px 13px;border-radius:16px;
+  font-size:.84rem;line-height:1.55;position:relative;
+}
+.msg-row.ai .msg-bubble{
+  background:var(--surface);
+  backdrop-filter:blur(var(--blur)) saturate(1.4);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.4);
+  border:1px solid var(--border);border-bottom-left-radius:4px;
+  box-shadow:0 4px 16px var(--shadow2);
+  color:var(--text);
+}
+.msg-row.user .msg-bubble{
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:#fff;border-bottom-right-radius:4px;
+  box-shadow:0 4px 14px rgba(229,53,53,.3);
+}
+.msg-bubble.thinking{color:var(--text3);font-style:italic}
+.msg-bubble .typing-dots{display:inline-flex;gap:4px;vertical-align:middle;margin-left:4px}
+.typing-dots span{width:5px;height:5px;border-radius:50%;background:var(--text3);animation:bounce 1.2s infinite}
+.typing-dots span:nth-child(2){animation-delay:.2s}
+.typing-dots span:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}
+
+/* action chips that Claude can insert */
+.ai-action-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.ai-action-chip{padding:4px 10px;border-radius:20px;font-size:.7rem;border:none;cursor:pointer;background:var(--ai-glass);color:var(--ai);border:1px solid var(--ai-border);transition:all .15s}
+.ai-action-chip:active{transform:scale(.95)}
+
+.ai-quick-prompts{display:flex;flex-direction:column;gap:6px;padding:4px 0 8px;flex-shrink:0}
+.ai-quick-prompts.hidden{display:none}
+.quick-prompt-label{font-size:.7rem;color:var(--text3);letter-spacing:.05em;text-transform:uppercase}
+.qp-row{display:flex;gap:5px;flex-wrap:wrap}
+.qp-chip{padding:6px 11px;border-radius:20px;font-size:.75rem;border:none;cursor:pointer;background:var(--surface);color:var(--text2);border:1px solid var(--border);transition:all .15s;text-align:left;line-height:1.3}
+.qp-chip:hover{background:var(--ai-glass);color:var(--ai);border-color:var(--ai-border)}
+
+.ai-input-area{
+  display:flex;gap:8px;align-items:flex-end;padding:8px 0 0;flex-shrink:0;
+  border-top:1px solid var(--border2);
+}
+.ai-textarea{
+  flex:1;padding:10px 13px;border-radius:var(--radius);
+  border:1px solid var(--border);background:var(--input-bg);
+  color:var(--text);font-family:'DM Sans',sans-serif;font-size:.87rem;
+  outline:none;resize:none;min-height:42px;max-height:110px;line-height:1.4;
+  backdrop-filter:blur(8px);transition:border-color .2s;
+}
+.ai-textarea:focus{border-color:var(--ai)}
+.ai-send-btn{
+  width:40px;height:40px;border:none;cursor:pointer;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,var(--ai),var(--ai2));color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 12px rgba(124,58,237,.35);transition:transform .15s,opacity .2s;
+}
+.ai-send-btn:active{transform:scale(.9)}
+.ai-send-btn:disabled{opacity:.4;cursor:default}
+.ai-send-btn svg{width:16px;height:16px}
+.ai-clear-btn{width:34px;height:34px;border:none;cursor:pointer;border-radius:50%;background:var(--surface);border:1px solid var(--border);color:var(--text3);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.ai-clear-btn svg{width:14px;height:14px}
+
+/* fab */
+.fab{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);right:calc(50% - 240px + 18px);width:50px;height:50px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(229,53,53,.4),0 2px 8px rgba(0,0,0,.12);transition:transform .2s;z-index:50}
+.fab:active{transform:scale(.91)}
+.fab svg{width:21px;height:21px}
+.fab.ai-active{background:linear-gradient(135deg,var(--ai),var(--ai2));box-shadow:0 6px 20px rgba(124,58,237,.4)}
+@media(max-width:480px){.fab{right:18px}}
+
+/* sheet */
+.sheet-overlay{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,0);display:none;align-items:flex-end;transition:background var(--transition)}
+.sheet-overlay.open{display:flex;background:rgba(0,0,20,.38)}
+.sheet{width:100%;max-width:480px;margin:0 auto;border-radius:var(--radius) var(--radius) 0 0;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 22px);transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);max-height:92vh;overflow-y:auto}
+.sheet-overlay.open .sheet{transform:translateY(0)}
+.sheet-handle{width:32px;height:4px;border-radius:2px;background:var(--border);margin:0 auto 14px}
+.sheet-title{font-family:'Fraunces',serif;font-size:1.12rem;font-weight:600;margin-bottom:13px}
+.sheet-field{margin-bottom:9px}
+.sheet-label{font-size:.71rem;color:var(--text3);margin-bottom:3px;letter-spacing:.04em}
+.sheet-input,.sheet-textarea,.sheet-select{width:100%;padding:9px 11px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:.87rem;outline:none;transition:border-color .2s;backdrop-filter:blur(8px)}
+.sheet-input:focus,.sheet-textarea:focus{border-color:var(--accent)}
+.sheet-textarea{resize:none;min-height:76px;line-height:1.5}
+.sheet-select{appearance:none;cursor:pointer}
+.sheet-row{display:flex;gap:7px}
+.sheet-row .sheet-field{flex:1}
+.color-row{display:flex;gap:6px;flex-wrap:wrap}
+.color-swatch{width:25px;height:25px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:transform .15s,border-color .15s}
+.color-swatch.sel{border-color:var(--text);transform:scale(1.15)}
+.btn-primary{width:100%;padding:11px;border:none;cursor:pointer;border-radius:var(--radius-sm);background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-family:'DM Sans',sans-serif;font-weight:500;font-size:.9rem;transition:opacity .2s,transform .15s;margin-top:4px;box-shadow:0 4px 14px rgba(229,53,53,.22)}
+.btn-primary:active{opacity:.85;transform:scale(.98)}
+.btn-danger{width:100%;padding:10px;border:1px solid rgba(229,53,53,.3);cursor:pointer;border-radius:var(--radius-sm);background:rgba(229,53,53,.07);color:var(--red);font-family:'DM Sans',sans-serif;font-weight:500;font-size:.88rem;transition:all .2s;margin-top:5px}
+
+/* empty & toast & config */
+.empty-state{display:flex;flex-direction:column;align-items:center;padding:32px 20px;gap:9px;color:var(--text3);text-align:center}
+.empty-state svg{width:42px;height:42px;opacity:.4}
+.empty-state p{font-size:.84rem;line-height:1.5;max-width:200px}
+.toast{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);left:50%;transform:translateX(-50%) translateY(18px);background:var(--text);color:var(--bg);padding:9px 18px;border-radius:30px;font-size:.81rem;font-weight:500;opacity:0;transition:all .3s;z-index:200;white-space:nowrap;pointer-events:none;box-shadow:0 6px 20px rgba(0,0,0,.2)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.config-note{font-size:.73rem;color:var(--text3);line-height:1.5;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface-deep);border:1px solid var(--border2);margin-bottom:9px}
+.config-note a{color:var(--accent);text-decoration:none}
+.status-bar{display:flex;align-items:center;gap:5px;font-size:.71rem;color:var(--text3);padding:3px 0 7px}
+.status-bar .dot{width:6px;height:6px;border-radius:50%;background:var(--text3)}
+.status-bar.ok .dot{background:var(--green)}.status-bar.err .dot{background:var(--red)}.status-bar.busy .dot{background:var(--amber);animation:blink 1s infinite}
+
+/* markdown-lite in ai bubbles */
+.msg-bubble strong{font-weight:600}
+.msg-bubble em{font-style:italic}
+.msg-bubble code{font-family:monospace;font-size:.82em;background:rgba(0,0,0,.08);padding:1px 4px;border-radius:4px}
+.msg-bubble ul,.msg-bubble ol{padding-left:16px;margin:4px 0}
+.msg-bubble li{margin:2px 0}
+.msg-bubble p{margin:3px 0}
+.msg-bubble h3{font-size:.9rem;font-weight:600;margin:5px 0 2px}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.fade-up{animation:fadeUp .28s cubic-bezier(.4,0,.2,1) both}
+::-webkit-scrollbar{width:0}
+</style>
+</head>
+<body>
+<div class="bg-blobs"><div class="blob blob1"></div><div class="blob blob2"></div><div class="blob blob3"></div></div>
+
+<div id="app">
+  <header class="topbar">
+    <div class="logo">Glass<span>Note</span></div>
+    <div class="topbar-right">
+      <button class="icon-btn" id="syncBtn" title="Sync now">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        <div class="sync-dot offline" id="syncDot"></div>
+      </button>
+      <button class="icon-btn" id="themeBtn" title="Toggle theme">
+        <svg id="themeIcon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z"/></svg>
+      </button>
+      <button class="icon-btn" id="menuBtn" title="More">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <button class="tool-btn primary" id="tbSync">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>Sync Now
+    </button>
+    <button class="tool-btn ai-btn" id="tbAI">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>Claude AI
+    </button>
+    <button class="tool-btn" id="tbExport">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>Export XLSX
+    </button>
+    <button class="tool-btn" id="tbFirebase">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/></svg>Firebase
+    </button>
+    <button class="tool-btn danger" id="tbReset">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>Reset
+    </button>
+  </div>
+
+  <div class="tabs-wrap">
+    <nav class="tabs glass">
+      <button class="tab-btn active" data-tab="notes">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>Notes
+      </button>
+      <button class="tab-btn" data-tab="tasks">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Tasks
+      </button>
+      <button class="tab-btn" data-tab="appts">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>Calendar
+      </button>
+      <button class="tab-btn" data-tab="ai">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>Claude
+      </button>
+    </nav>
+  </div>
+
+  <div class="panel-wrap">
+    <!-- NOTES -->
+    <div class="panel active" id="panel-notes">
+      <div class="section-label">My Notes</div>
+      <div id="notes-list"></div>
+      <div class="add-card" id="addNoteBtn"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>New note</div>
+    </div>
+
+    <!-- TASKS -->
+    <div class="panel" id="panel-tasks">
+      <div class="section-label">Today's Tasks</div>
+      <div class="task-group glass" id="tasks-pending" style="border-radius:var(--radius);padding:5px 0"></div>
+      <div class="add-card" id="addTaskBtn"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>New task</div>
+      <div class="section-label" id="done-label" style="display:none">Completed</div>
+      <div class="task-group glass" id="tasks-done" style="border-radius:var(--radius);padding:5px 0;display:none"></div>
+    </div>
+
+    <!-- CALENDAR -->
+    <div class="panel" id="panel-appts">
+      <div class="calendar-wrap glass" id="calendarWrap"></div>
+      <div class="section-label" id="appt-section-label">Appointments</div>
+      <div id="appts-list"></div>
+      <div class="add-card" id="addApptBtn"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>New appointment</div>
+    </div>
+
+    <!-- CLAUDE AI -->
+    <div class="panel" id="panel-ai">
+      <!-- API key banner -->
+      <div class="ai-key-banner" id="aiKeyBanner">
+        <div class="ai-key-label">🤖 Claude API Key</div>
+        <div class="ai-key-hint">Get your free key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>. It's stored only in this browser.</div>
+        <div class="ai-key-row">
+          <input class="ai-key-input" id="aiKeyInput" type="password" placeholder="sk-ant-…"/>
+          <button class="ai-key-save" id="aiKeySave">Save</button>
+        </div>
+      </div>
+
+      <!-- Context chips -->
+      <div class="ai-context-strip">
+        <button class="ctx-chip on" id="ctx-notes" title="Include notes">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+          Notes
+        </button>
+        <button class="ctx-chip on" id="ctx-tasks" title="Include tasks">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Tasks
+        </button>
+        <button class="ctx-chip on" id="ctx-appts" title="Include appointments">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          Calendar
+        </button>
+      </div>
+
+      <!-- Quick prompts -->
+      <div class="ai-quick-prompts" id="quickPrompts">
+        <div class="quick-prompt-label">Quick prompts</div>
+        <div class="qp-row">
+          <button class="qp-chip">📋 Summarise my day</button>
+          <button class="qp-chip">✅ What's overdue?</button>
+          <button class="qp-chip">💡 Suggest priorities</button>
+          <button class="qp-chip">📝 Turn note into tasks</button>
+          <button class="qp-chip">🗓 Plan my week</button>
+          <button class="qp-chip">✍️ Polish my note</button>
+        </div>
+      </div>
+
+      <!-- Messages -->
+      <div class="ai-messages" id="aiMessages"></div>
+
+      <!-- Input -->
+      <div class="ai-input-area">
+        <button class="ai-clear-btn" id="aiClearBtn" title="Clear chat">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </button>
+        <textarea class="ai-textarea" id="aiInput" placeholder="Ask Claude about your notes, tasks…" rows="1"></textarea>
+        <button class="ai-send-btn" id="aiSendBtn">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<button class="fab" id="fab"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg></button>
+
+<div class="sheet-overlay" id="sheetOverlay">
+  <div class="sheet glass" id="sheet">
+    <div class="sheet-handle"></div>
+    <div id="sheetContent"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ══════════ CONSTANTS ══════════ */
+const COLORS=['#e53535','#b91c1c','#ec4899','#f59e0b','#22c55e','#14b8a6','#f97316','#8b5cf6'];
+const COLOR_NAMES=['Red','Crimson','Pink','Amber','Green','Teal','Orange','Violet'];
+const CATS=['Work','Personal','Health','Other'];
+const CAT_CLASS={Work:'work',Personal:'personal',Health:'health',Other:''};
+
+/* ══════════ STATE ══════════ */
+let state = loadLocal() || {
+  notes:[],tasks:[],appts:[],
+  theme:'light',calYear:new Date().getFullYear(),calMonth:new Date().getMonth(),
+  selectedDate:toDateStr(new Date()),
+  firebase:{apiKey:'',authDomain:'',databaseURL:'',projectId:'',storageBucket:'',messagingSenderId:'',appId:''},
+  claudeKey:'',
+};
+
+function loadLocal(){try{const s=localStorage.getItem('glassnote');return s?JSON.parse(s):null}catch{return null}}
+function saveLocal(){try{localStorage.setItem('glassnote',JSON.stringify(state))}catch{}}
+function toDateStr(d){return d.toISOString().slice(0,10)}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2)}
+function today(){return toDateStr(new Date())}
+
+/* ══════════ FIREBASE ══════════ */
+let db=null,fbConnected=false;
+function initFirebase(cfg){
+  try{
+    if(firebase.apps.length)firebase.apps.forEach(a=>{try{a.delete()}catch{}});
+    if(!cfg.databaseURL||!cfg.apiKey)throw new Error('Missing config');
+    firebase.initializeApp(cfg);db=firebase.database();setSyncStatus('syncing');
+    db.ref('glassnote').on('value',snap=>{
+      const r=snap.val();
+      if(r){state.notes=r.notes||[];state.tasks=r.tasks||[];state.appts=r.appts||[];saveLocal();renderAll();}
+      setSyncStatus('synced');fbConnected=true;
+    },err=>{setSyncStatus('error');showToast('Firebase: '+err.message)});
+    showToast('Firebase connected ✓');return true;
+  }catch(e){setSyncStatus('error');showToast('Firebase failed: '+e.message);return false}
+}
+async function syncNow(){
+  if(!db){showToast('Configure Firebase first');return;}
+  setSyncStatus('syncing');
+  try{await db.ref('glassnote').set({notes:state.notes,tasks:state.tasks,appts:state.appts,updatedAt:Date.now()});setSyncStatus('synced');showToast('Synced ✓');}
+  catch(e){setSyncStatus('error');showToast('Sync failed: '+e.message)}
+}
+async function syncIfConnected(){if(db)await syncNow()}
+async function resetAll(){
+  if(!confirm('Delete ALL data everywhere? This cannot be undone.'))return;
+  state.notes=[];state.tasks=[];state.appts=[];saveLocal();renderAll();
+  if(db){try{await db.ref('glassnote').remove();showToast('All data cleared ✓')}catch(e){showToast('Local cleared; remote error')}}
+  else showToast('All local data cleared ✓');
+}
+function setSyncStatus(s){document.getElementById('syncDot').className='sync-dot '+s}
+
+/* ══════════ THEME ══════════ */
+function applyTheme(t){
+  document.documentElement.setAttribute('data-theme',t);
+  document.getElementById('themeIcon').innerHTML=t==='dark'
+    ?'<path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'
+    :'<path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z"/>';
+}
+document.getElementById('themeBtn').onclick=()=>{state.theme=state.theme==='light'?'dark':'light';applyTheme(state.theme);saveLocal()};
+applyTheme(state.theme);
+
+/* ══════════ TOAST ══════════ */
+let toastT;
+function showToast(m,d=2800){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),d)}
+
+/* ══════════ TABS ══════════ */
+let activeTab='notes';
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.onclick=()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');activeTab=btn.dataset.tab;
+    document.getElementById('panel-'+activeTab).classList.add('active');
+    const fab=document.getElementById('fab');
+    fab.className='fab'+(activeTab==='ai'?' ai-active':'');
+    fab.innerHTML=activeTab==='ai'
+      ?'<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>'
+      :'<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>';
+  };
+});
+
+/* ══════════ SHEET ══════════ */
+const overlay=document.getElementById('sheetOverlay');
+function openSheet(html,onOpen){document.getElementById('sheetContent').innerHTML=html;overlay.style.display='flex';requestAnimationFrame(()=>overlay.classList.add('open'));if(onOpen)onOpen()}
+function closeSheet(){overlay.classList.remove('open');setTimeout(()=>{overlay.style.display='none'},350)}
+overlay.addEventListener('click',e=>{if(e.target===overlay)closeSheet()});
+
+/* ══════════ FAB ══════════ */
+document.getElementById('fab').onclick=()=>{
+  if(activeTab==='notes')showNoteSheet();
+  else if(activeTab==='tasks')showTaskSheet();
+  else if(activeTab==='appts')showApptSheet();
+  else{document.getElementById('aiInput').focus()}
+};
+document.getElementById('addNoteBtn').onclick=()=>showNoteSheet();
+document.getElementById('addTaskBtn').onclick=()=>showTaskSheet();
+document.getElementById('addApptBtn').onclick=()=>showApptSheet();
+
+/* ══════════ TOOLBAR ══════════ */
+document.getElementById('tbSync').onclick=()=>syncNow();
+document.getElementById('syncBtn').onclick=()=>syncNow();
+document.getElementById('tbAI').onclick=()=>document.querySelector('[data-tab="ai"]').click();
+document.getElementById('tbExport').onclick=()=>exportXLSX();
+document.getElementById('tbFirebase').onclick=()=>showFirebaseSheet();
+document.getElementById('tbReset').onclick=()=>resetAll();
+document.getElementById('menuBtn').onclick=()=>showMenuSheet();
+
+/* ══════════ CLAUDE AI ══════════ */
+let aiHistory=[];
+let ctxFlags={notes:true,tasks:true,appts:true};
+let aiStreaming=false;
+
+// Key save
+document.getElementById('aiKeySave').onclick=()=>{
+  const k=document.getElementById('aiKeyInput').value.trim();
+  if(!k.startsWith('sk-ant-')){showToast('Invalid key — must start with sk-ant-');return;}
+  state.claudeKey=k;saveLocal();
+  document.getElementById('aiKeyBanner').classList.add('hidden');
+  showToast('Claude API key saved ✓');
+};
+function initAIKeyBanner(){
+  if(state.claudeKey){
+    document.getElementById('aiKeyBanner').classList.add('hidden');
+    document.getElementById('aiKeyInput').value=state.claudeKey;
+  }
+}
+
+// context chips
+['notes','tasks','appts'].forEach(k=>{
+  document.getElementById('ctx-'+k).onclick=function(){
+    ctxFlags[k]=!ctxFlags[k];this.classList.toggle('on',ctxFlags[k]);
+  };
+});
+
+// quick prompts
+document.querySelectorAll('.qp-chip').forEach(chip=>{
+  chip.onclick=()=>sendAI(chip.textContent.replace(/^[^\s]+\s/,'').trim());
+});
+
+// textarea auto-resize + enter
+const aiTA=document.getElementById('aiInput');
+aiTA.addEventListener('input',()=>{aiTA.style.height='auto';aiTA.style.height=Math.min(aiTA.scrollHeight,110)+'px'});
+aiTA.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendAI(aiTA.value.trim())}});
+document.getElementById('aiSendBtn').onclick=()=>sendAI(aiTA.value.trim());
+document.getElementById('aiClearBtn').onclick=()=>{
+  aiHistory=[];
+  document.getElementById('aiMessages').innerHTML='';
+  document.getElementById('quickPrompts').classList.remove('hidden');
+};
+
+function buildContext(){
+  let ctx='';
+  if(ctxFlags.notes&&state.notes.length){
+    ctx+='\n\n## User\'s Notes\n'+state.notes.map(n=>`### ${n.title}\n${n.body}`).join('\n\n');
+  }
+  if(ctxFlags.tasks&&state.tasks.length){
+    const pending=state.tasks.filter(t=>!t.done);
+    const done=state.tasks.filter(t=>t.done);
+    ctx+='\n\n## Tasks\nPending: '+pending.map(t=>`${t.text}${t.due?' (due '+t.due+')':''} [${t.priority}]`).join(', ');
+    if(done.length)ctx+='\nCompleted: '+done.map(t=>t.text).join(', ');
+  }
+  if(ctxFlags.appts&&state.appts.length){
+    ctx+='\n\n## Upcoming Appointments\n'+state.appts.map(a=>`- ${a.date} ${a.time}: ${a.title} (${a.cat}, ${a.duration}min)${a.notes?' — '+a.notes:''}`).join('\n');
+  }
+  return ctx;
+}
+
+function appendMsg(role,html,isTyping=false){
+  const wrap=document.getElementById('aiMessages');
+  document.getElementById('quickPrompts').classList.add('hidden');
+  const row=document.createElement('div');
+  row.className='msg-row '+role+' fade-up';
+  const initials=role==='ai'?'AI':'Me';
+  row.innerHTML=`
+    <div class="msg-avatar ${role==='ai'?'ai-av':'user-av'}">${initials}</div>
+    <div class="msg-bubble${isTyping?' thinking':''}"></div>`;
+  row.querySelector('.msg-bubble').innerHTML=html;
+  wrap.appendChild(row);
+  wrap.scrollTop=wrap.scrollHeight;
+  return row.querySelector('.msg-bubble');
+}
+
+function mdToHtml(txt){
+  return txt
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/`(.+?)`/g,'<code>$1</code>')
+    .replace(/### (.+)/g,'<h3>$1</h3>')
+    .replace(/^[-•] (.+)/gm,'<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/s,'<ul>$1</ul>')
+    .replace(/\n{2,}/g,'</p><p>')
+    .replace(/\n/g,'<br>');
+}
+
+// Parse action commands Claude can embed: [ADD_TASK:text|priority]  [ADD_NOTE:title|body]
+function parseActions(text){
+  const actions=[];
+  text.replace(/\[ADD_TASK:([^|]+)\|(\w+)\]/g,(_,t,p)=>actions.push({type:'task',text:t.trim(),priority:p}));
+  text.replace(/\[ADD_NOTE:([^|]+)\|([^\]]+)\]/g,(_,ti,b)=>actions.push({type:'note',title:ti.trim(),body:b.trim()}));
+  return actions;
+}
+
+function renderActionChips(actions,bubble){
+  if(!actions.length)return;
+  const row=document.createElement('div');row.className='ai-action-row';
+  actions.forEach(a=>{
+    const btn=document.createElement('button');btn.className='ai-action-chip';
+    btn.textContent=a.type==='task'?'➕ Add task: '+a.text:'📝 Add note: '+a.title;
+    btn.onclick=()=>{
+      if(a.type==='task'){state.tasks.unshift({id:uid(),text:a.text,due:'',priority:a.priority||'med',done:false});renderTasks();}
+      else{state.notes.unshift({id:uid(),title:a.title,body:a.body,color:COLORS[0],date:today()});renderNotes();}
+      saveLocal();syncIfConnected();btn.textContent='✓ Added!';btn.disabled=true;showToast('Added ✓');
+    };
+    row.appendChild(btn);
+  });
+  bubble.appendChild(row);
+}
+
+async function sendAI(msg){
+  if(!msg||aiStreaming)return;
+  if(!state.claudeKey){showToast('Add your Claude API key first');document.getElementById('aiKeyBanner').classList.remove('hidden');return;}
+  aiStreaming=true;aiTA.value='';aiTA.style.height='auto';
+  document.getElementById('aiSendBtn').disabled=true;
+
+  appendMsg('user',escHtml(msg));
+  aiHistory.push({role:'user',content:msg});
+
+  // typing indicator
+  const thinkBubble=appendMsg('ai','Thinking<div class="typing-dots"><span></span><span></span><span></span></div>',true);
+  document.getElementById('aiMessages').scrollTop=9999;
+
+  const systemPrompt=`You are Claude, an AI assistant embedded in GlassNote — a personal productivity notebook app. You help the user manage their notes, tasks, and appointments.
+Today's date is ${today()}.
+${buildContext()}
+
+You can suggest adding items to the app by including these tags in your response (they become clickable buttons):
+- To suggest a task: [ADD_TASK:task text|priority] where priority is high, med, or low
+- To suggest a note: [ADD_NOTE:title|body text]
+
+Be concise, friendly, and helpful. Use markdown formatting.`;
+
+  try{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':state.claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1000,
+        system:systemPrompt,
+        messages:aiHistory
+      })
+    });
+    if(!resp.ok){const e=await resp.json();throw new Error(e.error?.message||'API error '+resp.status)}
+    const data=await resp.json();
+    const rawText=data.content?.[0]?.text||'';
+    aiHistory.push({role:'assistant',content:rawText});
+
+    // strip action tags for display
+    const displayText=rawText.replace(/\[ADD_TASK:[^\]]+\]/g,'').replace(/\[ADD_NOTE:[^\]]+\]/g,'').trim();
+    thinkBubble.className='msg-bubble';
+    thinkBubble.innerHTML='<p>'+mdToHtml(displayText)+'</p>';
+
+    // action chips
+    const actions=parseActions(rawText);
+    renderActionChips(actions,thinkBubble);
+    document.getElementById('aiMessages').scrollTop=9999;
+  }catch(e){
+    thinkBubble.className='msg-bubble';
+    thinkBubble.innerHTML='<em style="color:var(--red)">Error: '+escHtml(e.message)+'</em>';
+  }finally{
+    aiStreaming=false;
+    document.getElementById('aiSendBtn').disabled=false;
+  }
+}
+
+/* ══════════ FIREBASE SHEET ══════════ */
+function showFirebaseSheet(){
+  const c=state.firebase||{};
+  openSheet(`
+    <div class="sheet-title">Firebase Config</div>
+    <div class="config-note">1. <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> → new project → Add web app<br>2. Enable <b>Realtime Database</b> in test mode<br>3. Paste config & tap Connect</div>
+    <div id="fb-status" class="status-bar"><div class="dot"></div><span>Not connected</span></div>
+    <div class="sheet-field"><div class="sheet-label">API KEY</div><input class="sheet-input" id="fb-apiKey" placeholder="AIzaSy…" value="${escHtml(c.apiKey||'')}"/></div>
+    <div class="sheet-field"><div class="sheet-label">AUTH DOMAIN</div><input class="sheet-input" id="fb-authDomain" placeholder="myapp.firebaseapp.com" value="${escHtml(c.authDomain||'')}"/></div>
+    <div class="sheet-field"><div class="sheet-label">DATABASE URL</div><input class="sheet-input" id="fb-databaseURL" placeholder="https://myapp-default-rtdb.firebaseio.com" value="${escHtml(c.databaseURL||'')}"/></div>
+    <div class="sheet-row">
+      <div class="sheet-field"><div class="sheet-label">PROJECT ID</div><input class="sheet-input" id="fb-projectId" placeholder="myapp-12345" value="${escHtml(c.projectId||'')}"/></div>
+      <div class="sheet-field"><div class="sheet-label">APP ID</div><input class="sheet-input" id="fb-appId" placeholder="1:123…" value="${escHtml(c.appId||'')}"/></div>
+    </div>
+    <button class="btn-primary" id="fb-connect">Connect & Sync</button>
+    <button class="btn-danger" id="fb-disconnect">Disconnect</button>
+  `,()=>{
+    if(fbConnected){const sb=document.getElementById('fb-status');sb.className='status-bar ok';sb.innerHTML='<div class="dot"></div><span>Connected</span>'}
+    document.getElementById('fb-connect').onclick=()=>{
+      const cfg={apiKey:document.getElementById('fb-apiKey').value.trim(),authDomain:document.getElementById('fb-authDomain').value.trim(),databaseURL:document.getElementById('fb-databaseURL').value.trim(),projectId:document.getElementById('fb-projectId').value.trim(),appId:document.getElementById('fb-appId').value.trim()};
+      state.firebase=cfg;saveLocal();
+      const sb=document.getElementById('fb-status');sb.className='status-bar busy';sb.innerHTML='<div class="dot"></div><span>Connecting…</span>';
+      if(initFirebase(cfg)){sb.className='status-bar ok';sb.innerHTML='<div class="dot"></div><span>Connected</span>';closeSheet();}
+      else{sb.className='status-bar err';sb.innerHTML='<div class="dot"></div><span>Failed — check config</span>';}
+    };
+    document.getElementById('fb-disconnect').onclick=()=>{db=null;fbConnected=false;setSyncStatus('offline');showToast('Disconnected');closeSheet()};
+  });
+}
+
+/* ══════════ MENU SHEET ══════════ */
+function showMenuSheet(){
+  openSheet(`
+    <div class="sheet-title">Options</div>
+    <button class="btn-primary" id="m-ai" style="margin-bottom:8px;background:linear-gradient(135deg,#7c3aed,#6d28d9)">🤖 Claude AI Chat</button>
+    <button class="btn-primary" id="m-sync" style="margin-bottom:8px">🔄 Sync Now</button>
+    <button class="btn-primary" id="m-export" style="margin-bottom:8px;background:linear-gradient(135deg,#16a34a,#15803d)">📥 Export to Excel</button>
+    <button class="btn-primary" id="m-firebase" style="margin-bottom:8px;background:linear-gradient(135deg,#f97316,#ea580c)">🔥 Firebase Config</button>
+    <button class="btn-danger" id="m-reset">🗑 Reset All Data</button>
+    <div style="margin-top:14px;padding:11px;border-radius:var(--radius-sm);background:var(--surface-deep);border:1px solid var(--border2)">
+      <div style="font-size:.77rem;font-weight:500;margin-bottom:5px;color:var(--text2)">📦 Publish to GitHub Pages</div>
+      <div style="font-size:.71rem;color:var(--text3);line-height:1.6">1. Download this HTML file<br>2. Create a new GitHub repo<br>3. Upload as <b>index.html</b><br>4. Settings → Pages → Deploy from main<br>5. Live at <b>username.github.io/repo</b></div>
+    </div>
+  `,()=>{
+    document.getElementById('m-ai').onclick=()=>{closeSheet();setTimeout(()=>document.querySelector('[data-tab="ai"]').click(),380)};
+    document.getElementById('m-sync').onclick=()=>{closeSheet();syncNow()};
+    document.getElementById('m-export').onclick=()=>{closeSheet();exportXLSX()};
+    document.getElementById('m-firebase').onclick=()=>{closeSheet();setTimeout(showFirebaseSheet,380)};
+    document.getElementById('m-reset').onclick=()=>{closeSheet();setTimeout(resetAll,380)};
+  });
+}
+
+/* ══════════ EXPORT XLSX ══════════ */
+function exportXLSX(){
+  if(typeof XLSX==='undefined'){showToast('XLSX library not loaded');return}
+  showToast('Generating Excel…');
+  const wb=XLSX.utils.book_new();
+  const wsN=XLSX.utils.aoa_to_sheet([['ID','Title','Content','Color','Date'],...state.notes.map(n=>[n.id,n.title,n.body,n.color,n.date])]);
+  wsN['!cols']=[{wch:16},{wch:28},{wch:50},{wch:10},{wch:14}];XLSX.utils.book_append_sheet(wb,wsN,'Notes');
+  const wsT=XLSX.utils.aoa_to_sheet([['ID','Task','Due','Priority','Done'],...state.tasks.map(t=>[t.id,t.text,t.due||'',t.priority,t.done?'Yes':'No'])]);
+  wsT['!cols']=[{wch:16},{wch:40},{wch:14},{wch:10},{wch:8}];XLSX.utils.book_append_sheet(wb,wsT,'Tasks');
+  const wsA=XLSX.utils.aoa_to_sheet([['ID','Title','Date','Time','Duration','Category','Notes'],...state.appts.map(a=>[a.id,a.title,a.date,a.time,a.duration,a.cat,a.notes||''])]);
+  wsA['!cols']=[{wch:16},{wch:30},{wch:13},{wch:8},{wch:10},{wch:12},{wch:30}];XLSX.utils.book_append_sheet(wb,wsA,'Appointments');
+  XLSX.writeFile(wb,`GlassNote-${today()}.xlsx`);
+  showToast('Excel downloaded ✓');
+}
+
+/* ══════════ NOTES ══════════ */
+function showNoteSheet(note){
+  const isEdit=!!note;const n=note||{id:uid(),title:'',body:'',color:COLORS[0],date:today()};
+  openSheet(`
+    <div class="sheet-title">${isEdit?'Edit Note':'New Note'}</div>
+    <div class="sheet-field"><div class="sheet-label">TITLE</div><input class="sheet-input" id="s-ntitle" placeholder="Note title…" value="${escHtml(n.title)}"/></div>
+    <div class="sheet-field"><div class="sheet-label">CONTENT</div><textarea class="sheet-textarea" id="s-nbody" placeholder="Write something…">${escHtml(n.body)}</textarea></div>
+    <div class="sheet-field"><div class="sheet-label">COLOUR</div>
+      <div class="color-row" id="colorRow">${COLORS.map((c,i)=>`<div class="color-swatch${c===n.color?' sel':''}" style="background:${c}" data-color="${c}" title="${COLOR_NAMES[i]}"></div>`).join('')}</div>
+    </div>
+    <button class="btn-primary" id="s-nsave">${isEdit?'Save changes':'Add note'}</button>
+  `,()=>{
+    document.getElementById('s-ntitle').focus();
+    document.querySelectorAll('#colorRow .color-swatch').forEach(sw=>{
+      sw.onclick=()=>{document.querySelectorAll('#colorRow .color-swatch').forEach(x=>x.classList.remove('sel'));sw.classList.add('sel');n.color=sw.dataset.color};
+    });
+    document.getElementById('s-nsave').onclick=()=>{
+      n.title=document.getElementById('s-ntitle').value.trim()||'Untitled';
+      n.body=document.getElementById('s-nbody').value.trim();n.date=today();
+      if(!isEdit)state.notes.unshift(n);
+      saveLocal();renderNotes();syncIfConnected();closeSheet();
+    };
+  });
+}
+function renderNotes(){
+  const list=document.getElementById('notes-list');list.innerHTML='';
+  if(!state.notes.length){list.innerHTML=`<div class="empty-state"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg><p>No notes yet.<br>Tap + to create one.</p></div>`;return}
+  state.notes.forEach(n=>{
+    const el=document.createElement('div');el.className='note-card glass fade-up';el.style.borderLeft=`3px solid ${n.color}`;
+    el.innerHTML=`<div class="note-header"><div class="note-dot" style="background:${n.color}"></div><button class="delete-btn" data-id="${n.id}"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button></div>
+      <input class="note-title-input" value="${escHtml(n.title)}" placeholder="Title" data-id="${n.id}" data-field="title"/>
+      <textarea class="note-body-input" placeholder="Write something…" data-id="${n.id}" data-field="body">${escHtml(n.body)}</textarea>
+      <div class="note-meta">${formatDate(n.date)}</div>`;
+    list.appendChild(el);
+    el.querySelector('.delete-btn').onclick=e=>{e.stopPropagation();state.notes=state.notes.filter(x=>x.id!==n.id);saveLocal();renderNotes();syncIfConnected()};
+    el.querySelectorAll('[data-field]').forEach(inp=>{
+      inp.oninput=()=>{const note=state.notes.find(x=>x.id===inp.dataset.id);if(note)note[inp.dataset.field]=inp.value;saveLocal()};
+      inp.onblur=()=>syncIfConnected();
+    });
+  });
+}
+
+/* ══════════ TASKS ══════════ */
+function showTaskSheet(task){
+  const isEdit=!!task;const t=task||{id:uid(),text:'',due:'',priority:'med',done:false};
+  openSheet(`
+    <div class="sheet-title">${isEdit?'Edit Task':'New Task'}</div>
+    <div class="sheet-field"><div class="sheet-label">TASK</div><input class="sheet-input" id="s-ttext" placeholder="What needs doing?" value="${escHtml(t.text)}"/></div>
+    <div class="sheet-row">
+      <div class="sheet-field"><div class="sheet-label">DUE DATE</div><input type="date" class="sheet-input" id="s-tdue" value="${t.due}"/></div>
+      <div class="sheet-field"><div class="sheet-label">PRIORITY</div>
+        <select class="sheet-input sheet-select" id="s-tprio"><option value="high"${t.priority==='high'?' selected':''}>🔴 High</option><option value="med"${t.priority==='med'?' selected':''}>🟡 Medium</option><option value="low"${t.priority==='low'?' selected':''}>🟢 Low</option></select>
+      </div>
+    </div>
+    <button class="btn-primary" id="s-tsave">${isEdit?'Save changes':'Add task'}</button>
+  `,()=>{
+    document.getElementById('s-ttext').focus();
+    document.getElementById('s-tsave').onclick=()=>{
+      t.text=document.getElementById('s-ttext').value.trim();if(!t.text)return;
+      t.due=document.getElementById('s-tdue').value;t.priority=document.getElementById('s-tprio').value;
+      if(!isEdit)state.tasks.unshift(t);saveLocal();renderTasks();syncIfConnected();closeSheet();
+    };
+  });
+}
+function renderTasks(){
+  const pending=document.getElementById('tasks-pending'),done=document.getElementById('tasks-done'),lbl=document.getElementById('done-label');
+  pending.innerHTML='';done.innerHTML='';
+  const p=state.tasks.filter(t=>!t.done),d=state.tasks.filter(t=>t.done);
+  if(!p.length&&!d.length){pending.innerHTML=`<div class="empty-state"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><p>All clear! Add your first task.</p></div>`}
+  p.forEach(t=>pending.appendChild(buildTaskEl(t)));
+  lbl.style.display=d.length?'block':'none';done.style.display=d.length?'flex':'none';
+  d.forEach(t=>done.appendChild(buildTaskEl(t)));
+}
+function buildTaskEl(t){
+  const el=document.createElement('div');el.className='task-item';
+  el.innerHTML=`<div class="task-check${t.done?' done':''}" data-id="${t.id}"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+    <div class="task-text"><input class="task-input${t.done?' done-text':''}" value="${escHtml(t.text)}" data-id="${t.id}" placeholder="Task…"/>${t.due?`<div class="task-due">${formatDate(t.due)}</div>`:''}</div>
+    <div class="task-prio prio-${t.priority}"></div>`;
+  el.querySelector('.task-check').onclick=()=>{const task=state.tasks.find(x=>x.id===t.id);if(task){task.done=!task.done;saveLocal();renderTasks();syncIfConnected()}};
+  el.querySelector('.task-input').oninput=e=>{const task=state.tasks.find(x=>x.id===t.id);if(task){task.text=e.target.value;saveLocal()}};
+  el.querySelector('.task-input').onblur=()=>syncIfConnected();
+  el.addEventListener('dblclick',()=>showTaskSheet(state.tasks.find(x=>x.id===t.id)));
+  return el;
+}
+
+/* ══════════ APPOINTMENTS ══════════ */
+function showApptSheet(appt){
+  const isEdit=!!appt;const a=appt||{id:uid(),title:'',date:state.selectedDate,time:'09:00',duration:60,cat:'Work',notes:''};
+  openSheet(`
+    <div class="sheet-title">${isEdit?'Edit Appointment':'New Appointment'}</div>
+    <div class="sheet-field"><div class="sheet-label">TITLE</div><input class="sheet-input" id="s-atitle" placeholder="Appointment name…" value="${escHtml(a.title)}"/></div>
+    <div class="sheet-row">
+      <div class="sheet-field"><div class="sheet-label">DATE</div><input type="date" class="sheet-input" id="s-adate" value="${a.date}"/></div>
+      <div class="sheet-field"><div class="sheet-label">TIME</div><input type="time" class="sheet-input" id="s-atime" value="${a.time}"/></div>
+    </div>
+    <div class="sheet-row">
+      <div class="sheet-field"><div class="sheet-label">DURATION (MIN)</div><input type="number" class="sheet-input" id="s-adur" value="${a.duration}" min="15" step="15"/></div>
+      <div class="sheet-field"><div class="sheet-label">CATEGORY</div><select class="sheet-input sheet-select" id="s-acat">${CATS.map(c=>`<option${c===a.cat?' selected':''}>${c}</option>`).join('')}</select></div>
+    </div>
+    <div class="sheet-field"><div class="sheet-label">NOTES</div><textarea class="sheet-textarea" id="s-anotes" placeholder="Optional notes…" style="min-height:54px">${escHtml(a.notes||'')}</textarea></div>
+    <button class="btn-primary" id="s-asave">${isEdit?'Save changes':'Add appointment'}</button>
+  `,()=>{
+    document.getElementById('s-atitle').focus();
+    document.getElementById('s-asave').onclick=()=>{
+      a.title=document.getElementById('s-atitle').value.trim();if(!a.title)return;
+      a.date=document.getElementById('s-adate').value;a.time=document.getElementById('s-atime').value;
+      a.duration=parseInt(document.getElementById('s-adur').value)||60;a.cat=document.getElementById('s-acat').value;a.notes=document.getElementById('s-anotes').value.trim();
+      if(!isEdit)state.appts.push(a);
+      state.appts.sort((x,y)=>(x.date+x.time).localeCompare(y.date+y.time));
+      saveLocal();renderAppts();renderCalendar();syncIfConnected();closeSheet();
+    };
+  });
+}
+function renderAppts(){
+  const list=document.getElementById('appts-list'),label=document.getElementById('appt-section-label');
+  list.innerHTML='';const sel=state.selectedDate;const appts=state.appts.filter(a=>a.date===sel);
+  label.textContent=`${formatDate(sel)} · ${appts.length} event${appts.length!==1?'s':''}`;
+  if(!appts.length){list.innerHTML=`<div class="empty-state"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg><p>Nothing scheduled.<br>Tap + to add.</p></div>`;return}
+  appts.forEach(a=>{
+    const [hh,mm]=a.time.split(':').map(Number);const ampm=hh>=12?'PM':'AM';const h12=hh%12||12;
+    const el=document.createElement('div');el.className='appt-card glass fade-up';el.style.borderLeft=`3px solid ${catColor(a.cat)}`;
+    el.innerHTML=`<div class="appt-time"><div class="appt-time-main">${h12}:${String(mm).padStart(2,'0')}</div><div class="appt-time-ampm">${ampm}</div></div>
+      <div class="appt-body"><div class="appt-title">${escHtml(a.title)}</div><div class="appt-meta"><span class="appt-tag tag-${CAT_CLASS[a.cat]||''}">${a.cat}</span><span class="appt-tag">${a.duration} min</span>${a.notes?`<span class="appt-tag" style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.notes)}</span>`:''}</div></div>
+      <div class="appt-actions"><button class="delete-btn" style="opacity:1;width:28px;height:28px" data-id="${a.id}"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button></div>`;
+    el.querySelector('.delete-btn').onclick=()=>{state.appts=state.appts.filter(x=>x.id!==a.id);saveLocal();renderAppts();renderCalendar();syncIfConnected()};
+    el.querySelector('.appt-body').ondblclick=()=>showApptSheet(state.appts.find(x=>x.id===a.id));
+    list.appendChild(el);
+  });
+}
+function catColor(cat){return{Work:'#e53535',Personal:'#22c55e',Health:'#b91c1c',Other:'#f59e0b'}[cat]||'#e53535'}
+
+/* ══════════ CALENDAR ══════════ */
+function renderCalendar(){
+  const wrap=document.getElementById('calendarWrap');const year=state.calYear,month=state.calMonth;
+  const startDow=new Date(year,month,1).getDay();const daysInMonth=new Date(year,month+1,0).getDate();
+  const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const DAYS=['Su','Mo','Tu','We','Th','Fr','Sa'];
+  const eventDates=new Set(state.appts.map(a=>a.date));const todayStr=today();
+  let cells='';
+  const prevLast=new Date(year,month,0).getDate();
+  for(let i=startDow-1;i>=0;i--)cells+=`<div class="cal-day other-month">${prevLast-i}</div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const ds=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    cells+=`<div class="cal-day${ds===todayStr?' today':''}${eventDates.has(ds)?' has-event':''}${ds===state.selectedDate&&ds!==todayStr?' selected':''}" data-date="${ds}">${d}</div>`;
+  }
+  const rem=(7-(startDow+daysInMonth)%7)%7;
+  for(let d=1;d<=rem;d++)cells+=`<div class="cal-day other-month">${d}</div>`;
+  wrap.innerHTML=`<div class="cal-header"><button class="cal-nav" id="calPrev"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button><div class="cal-month">${MONTHS[month]} ${year}</div><button class="cal-nav" id="calNext"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></button></div><div class="cal-grid">${DAYS.map(d=>`<div class="cal-dow">${d}</div>`).join('')}${cells}</div>`;
+  wrap.querySelector('#calPrev').onclick=()=>{state.calMonth--;if(state.calMonth<0){state.calMonth=11;state.calYear--;}saveLocal();renderCalendar()};
+  wrap.querySelector('#calNext').onclick=()=>{state.calMonth++;if(state.calMonth>11){state.calMonth=0;state.calYear++;}saveLocal();renderCalendar()};
+  wrap.querySelectorAll('.cal-day[data-date]').forEach(el=>{el.onclick=()=>{state.selectedDate=el.dataset.date;saveLocal();renderCalendar();renderAppts()}});
+}
+
+/* ══════════ HELPERS ══════════ */
+function escHtml(s=''){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function formatDate(s){if(!s)return'';const d=new Date(s+'T00:00:00');return d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}
+function renderAll(){renderNotes();renderTasks();renderCalendar();renderAppts()}
+
+/* ══════════ INIT ══════════ */
+initAIKeyBanner();
+renderAll();
+
+// seed demo if empty
+if(!state.notes.length&&!state.tasks.length&&!state.appts.length){
+  state.notes=[
+    {id:uid(),title:'Welcome to GlassNote',body:'Tap any note to edit. Use the Claude tab to chat with AI about your notes, tasks, and appointments!',color:'#e53535',date:today()},
+    {id:uid(),title:'Claude AI tips',body:'Try asking: "Summarise my day", "What\'s overdue?", or "Turn this note into tasks". Claude can see your data when context chips are ON.',color:'#7c3aed',date:today()},
+  ];
+  state.tasks=[
+    {id:uid(),text:'Add Claude API key in the AI tab',due:today(),priority:'high',done:false},
+    {id:uid(),text:'Configure Firebase for sync',due:'',priority:'med',done:false},
+    {id:uid(),text:'Export data to Excel',due:'',priority:'low',done:false},
+  ];
+  state.appts=[
+    {id:uid(),title:'Team standup',date:today(),time:'09:00',duration:30,cat:'Work',notes:''},
+    {id:uid(),title:'Lunch with Jordan',date:today(),time:'13:00',duration:60,cat:'Personal',notes:'The usual spot'},
+  ];
+  saveLocal();renderAll();
+}
+if(state.firebase&&state.firebase.databaseURL)initFirebase(state.firebase);
+</script>
+</body>
+</html>
