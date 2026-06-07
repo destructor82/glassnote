@@ -6,6 +6,8 @@
 <title>GlassNote</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;1,9..144,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 <style>
 :root{
   --bg:#f5e8e8;--surface:rgba(255,255,255,0.40);--surface-hov:rgba(255,255,255,0.58);--surface-deep:rgba(255,255,255,0.18);
@@ -370,12 +372,21 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);tra
 <div class="toast" id="toast"></div>
 
 <script>
-/* ══════════ CONFIG ══════════ */
-// Free cloud sync — no account, no setup, works everywhere automatically
-// Uses JSONBin.io free tier (10 MB, unlimited reads/writes)
-const JSONBIN_KEY = '$2a$10$GlassNoteSharedBin0000000000000000000000000000000000000';
-// ↑ Replace with your own key from jsonbin.io if you want a private bin
-// Or leave as-is — the bin ID stored in the URL keeps your data private
+/* ══════════ FIREBASE — auto-connects on every device, no setup ══════════ */
+/* ─────────────────────────────────────────────────────────────────
+   YOUR FIREBASE CONFIG — paste your own from:
+   console.firebase.google.com → Project settings → Your apps
+   Every device that opens this app connects automatically.
+   ───────────────────────────────────────────────────────────────── */
+const FB = {
+  apiKey:            "AIzaSyB55UXuKz82Dn8fvawc3X31N9F-uvJhDro",
+  authDomain:        "glassnote-69848.firebaseapp.com",
+  databaseURL:       "https://glassnote-69848-default-rtdb.firebaseio.com",
+  projectId:         "glassnote-69848",
+  storageBucket:     "glassnote-69848.firebasestorage.app",
+  messagingSenderId: "837308089074",
+  appId:             "1:837308089074:web:bc2496cc3d0dcac236066b"
+};
 
 /* ══════════ UTILS ══════════ */
 const COLORS=['#e53535','#b91c1c','#ec4899','#f59e0b','#22c55e','#14b8a6','#f97316','#8b5cf6'];
@@ -393,7 +404,6 @@ let state = loadLocal() || {
   notes:[],tasks:[],appts:[],
   theme:'light',calYear:new Date().getFullYear(),calMonth:new Date().getMonth(),
   selectedDate:today(),claudeKey:'',
-  binId:null, // JSONBin bin ID — shared via URL ?id=xxx
 };
 
 function loadLocal(){
@@ -403,143 +413,97 @@ function saveLocal(){
   try{localStorage.setItem('glassnote',JSON.stringify(state))}catch{}
 }
 
-/* ══════════ CLOUD SYNC (JSONBin.io — zero setup) ══════════ */
-let syncTimer=null,lastSyncHash='';
-const API='https://api.jsonbin.io/v3';
+/* ══════════ FIREBASE REAL-TIME SYNC ══════════ */
+let db = null;
 
-function dataHash(){return JSON.stringify({n:state.notes,t:state.tasks,a:state.appts})}
-
-function setSyncStatus(s,label){
-  const pill=document.getElementById('syncPill');
-  const lbl=document.getElementById('syncLabel');
-  pill.className='sync-pill '+s;
-  lbl.textContent=label||{synced:'Synced',syncing:'Syncing…',error:'Sync error',offline:'Local only'}[s]||s;
+function setSyncStatus(s, label){
+  const pill = document.getElementById('syncPill');
+  const lbl  = document.getElementById('syncLabel');
+  pill.className = 'sync-pill ' + s;
+  lbl.textContent = label || {synced:'Synced',syncing:'Connecting…',error:'Offline',offline:'Local only'}[s] || s;
 }
 
-// Check URL for ?id= param on load
-function getBinIdFromURL(){
-  const p=new URLSearchParams(location.search).get('id');
-  return p||null;
-}
-
-// Create a brand new bin for this user
-async function createBin(){
-  setSyncStatus('syncing','Creating…');
+function initFirebase(){
+  // Real Firebase config is baked in — connecting automatically
   try{
-    const r=await fetch(`${API}/b`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','X-Access-Key':JSONBIN_KEY,'X-Bin-Private':'false','X-Bin-Name':'GlassNote'},
-      body:JSON.stringify({notes:state.notes,tasks:state.tasks,appts:state.appts})
+    firebase.initializeApp(FB);
+    db = firebase.database();
+    setSyncStatus('syncing');
+    // Real-time listener — fires instantly on every device the moment data changes
+    db.ref('glassnote').on('value', snap => {
+      const d = snap.val();
+      if(d){
+        state.notes  = d.notes  || [];
+        state.tasks  = d.tasks  || [];
+        state.appts  = d.appts  || [];
+        saveLocal();
+        renderAll();
+      }
+      setSyncStatus('synced');
+    }, err => {
+      setSyncStatus('error', 'Offline');
     });
-    const d=await r.json();
-    if(d.metadata?.id){
-      state.binId=d.metadata.id;
-      saveLocal();
-      // Update URL so the bin ID is shareable
-      const url=new URL(location.href);url.searchParams.set('id',state.binId);
-      history.replaceState(null,'',url.toString());
-      setSyncStatus('synced');showToast('Cloud sync ready ✓ — share the link!');
-      lastSyncHash=dataHash();
-    }else throw new Error('No ID returned');
-  }catch(e){setSyncStatus('error','Error');showToast('Sync setup failed: '+e.message)}
+  } catch(e){
+    setSyncStatus('error', 'Error');
+    console.warn('Firebase init failed:', e.message);
+  }
 }
 
-// Pull latest from cloud
-async function pullBin(){
-  if(!state.binId)return;
-  setSyncStatus('syncing');
-  try{
-    const r=await fetch(`${API}/b/${state.binId}/latest`,{headers:{'X-Access-Key':JSONBIN_KEY}});
-    const d=await r.json();
-    const rec=d.record;
-    if(rec){
-      state.notes=rec.notes||[];state.tasks=rec.tasks||[];state.appts=rec.appts||[];
-      saveLocal();renderAll();
-      lastSyncHash=dataHash();
-    }
-    setSyncStatus('synced');
-  }catch(e){setSyncStatus('error','Error')}
-}
 
-// Push local data to cloud
-async function pushBin(){
-  if(!state.binId){await createBin();return}
-  const h=dataHash();if(h===lastSyncHash)return; // nothing changed
-  setSyncStatus('syncing');
-  try{
-    await fetch(`${API}/b/${state.binId}`,{
-      method:'PUT',
-      headers:{'Content-Type':'application/json','X-Access-Key':JSONBIN_KEY},
-      body:JSON.stringify({notes:state.notes,tasks:state.tasks,appts:state.appts})
-    });
-    lastSyncHash=h;setSyncStatus('synced');
-  }catch(e){setSyncStatus('error','Error')}
-}
-
-// Debounced push — push 2 seconds after last change
+let pushTimer = null;
 function schedulePush(){
-  clearTimeout(syncTimer);
-  syncTimer=setTimeout(pushBin,2000);
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushNow, 1500);
+}
+
+async function pushNow(){
+  if(!db){ saveLocal(); return; }
+  try{
+    await db.ref('glassnote').set({
+      notes:  state.notes,
+      tasks:  state.tasks,
+      appts:  state.appts,
+      ts:     Date.now()
+    });
+    setSyncStatus('synced');
+  } catch(e){ setSyncStatus('error','Offline'); }
 }
 
 async function syncNow(){
-  clearTimeout(syncTimer);
-  if(!state.binId){await createBin();}
-  else{await pushBin();}
+  clearTimeout(pushTimer);
+  if(!db){ showToast('Not connected to Firebase'); return; }
+  await pushNow();
   showToast('Synced ✓');
-}
-
-// Poll for remote changes every 30s when app is open
-function startPolling(){
-  setInterval(async()=>{
-    if(!state.binId||document.hidden)return;
-    try{
-      const r=await fetch(`${API}/b/${state.binId}/latest`,{headers:{'X-Access-Key':JSONBIN_KEY}});
-      const d=await r.json();const rec=d.record;
-      if(rec){
-        const remoteHash=JSON.stringify({n:rec.notes,t:rec.tasks,a:rec.appts});
-        if(remoteHash!==lastSyncHash){
-          state.notes=rec.notes||[];state.tasks=rec.tasks||[];state.appts=rec.appts||[];
-          saveLocal();renderAll();lastSyncHash=remoteHash;setSyncStatus('synced');
-        }
-      }
-    }catch{}
-  },30000);
 }
 
 /* ══════════ SHARE ══════════ */
 function showShareSheet(){
-  if(!state.binId){
-    openSheet(`
-      <div class="sheet-title">📡 Share & Sync</div>
-      <p style="font-size:.86rem;color:var(--text2);line-height:1.55;margin-bottom:14px">Tap <b>Enable Cloud Sync</b> to get a shareable link. Open that same link on any device and everything stays in sync automatically — no login needed.</p>
-      <button class="btn-primary" id="sh-enable">Enable Cloud Sync</button>
-    `,()=>{document.getElementById('sh-enable').onclick=async()=>{closeSheet();await createBin();setTimeout(showShareSheet,600)}});
-    return;
-  }
-  const url=new URL(location.href);url.searchParams.set('id',state.binId);
-  const shareUrl=url.toString();
+  const url = location.href.split('?')[0];
   openSheet(`
     <div class="sheet-title">📡 Share & Sync</div>
-    <p style="font-size:.84rem;color:var(--text2);line-height:1.5;margin-bottom:10px">Open this link on any phone, tablet, or PC — it automatically loads your data and keeps everything in sync.</p>
+    <p style="font-size:.84rem;color:var(--text2);line-height:1.55;margin-bottom:12px">
+      Your data syncs automatically via Firebase. Open this app on <b>any device</b> — it connects instantly with no login or setup needed.
+    </p>
     <div class="share-box">
-      <div class="share-url" id="shareUrl">${escHtml(shareUrl)}</div>
+      <div class="share-url">${escHtml(url)}</div>
       <div style="display:flex;gap:7px">
         <button class="btn-primary" id="sh-copy" style="margin-top:0;flex:1">Copy Link</button>
         <button class="btn-primary" id="sh-native" style="margin-top:0;flex:1;background:linear-gradient(135deg,#16a34a,#15803d)">Share…</button>
       </div>
-      <div class="share-hint">🔒 Your data is private — only people with this link can access it.</div>
+      <div class="share-hint" id="shareHint">✅ All devices that open this link share the same live data automatically via Firebase.</div>
     </div>
-    <div style="margin-top:10px;font-size:.75rem;color:var(--text3)">Sync ID: <code style="background:var(--surface-deep);padding:2px 6px;border-radius:5px">${state.binId}</code></div>
+    <div style="margin-top:10px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--surface-deep);border:1px solid var(--border2);font-size:.72rem;color:var(--text3);line-height:1.5">
+      🔥 <b>Powered by Firebase Realtime Database.</b><br>Changes appear on all devices within 1 second — no refresh needed.
+    </div>
   `,()=>{
     document.getElementById('sh-copy').onclick=()=>{
-      navigator.clipboard.writeText(shareUrl).then(()=>showToast('Link copied ✓')).catch(()=>{
-        const ta=document.createElement('textarea');ta.value=shareUrl;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();showToast('Link copied ✓');
+      navigator.clipboard.writeText(url).then(()=>showToast('Link copied ✓')).catch(()=>{
+        const ta=document.createElement('textarea');ta.value=url;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();showToast('Link copied ✓');
       });
     };
     document.getElementById('sh-native').onclick=()=>{
-      if(navigator.share)navigator.share({title:'GlassNote',url:shareUrl}).catch(()=>{});
-      else{navigator.clipboard.writeText(shareUrl);showToast('Link copied ✓')}
+      if(navigator.share)navigator.share({title:'GlassNote',url}).catch(()=>{});
+      else{navigator.clipboard.writeText(url);showToast('Link copied ✓')}
     };
   });
 }
@@ -549,8 +513,8 @@ async function resetAll(){
   if(!confirm('Delete ALL data? This cannot be undone.'))return;
   state.notes=[];state.tasks=[];state.appts=[];
   saveLocal();renderAll();
-  if(state.binId){try{await pushBin();showToast('All data cleared ✓')}catch{showToast('Local cleared ✓')}}
-  else showToast('All data cleared ✓');
+  await pushNow();
+  showToast('All data cleared ✓');
 }
 
 /* ══════════ THEME ══════════ */
@@ -565,7 +529,7 @@ applyTheme(state.theme);
 
 /* ══════════ TOAST ══════════ */
 let toastT;
-function showToast(m,d=2600){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),d)}
+function showToast(m,d=2700){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),d)}
 
 /* ══════════ TABS ══════════ */
 let activeTab='notes';
@@ -813,11 +777,11 @@ renderAll();
 // Seed demo data
 if(!state.notes.length&&!state.tasks.length&&!state.appts.length){
   state.notes=[
-    {id:uid(),title:'Welcome to GlassNote 👋',body:'Your notes, tasks, and appointments — all in one place. Tap Share Link to sync across all your devices instantly. No login, no setup.',color:'#e53535',date:today()},
+    {id:uid(),title:'Welcome to GlassNote 👋',body:'Your notes, tasks, and appointments — all in one place. Firebase syncs your data across every device automatically — no login, no setup needed.',color:'#e53535',date:today()},
     {id:uid(),title:'Try Claude AI 🤖',body:'Tap the Claude tab and ask: "Summarise my day", "What\'s overdue?", or "Turn this into tasks". Claude can see all your data.',color:'#7c3aed',date:today()},
   ];
   state.tasks=[
-    {id:uid(),text:'Tap Share Link to sync across devices',due:today(),priority:'high',done:false},
+    {id:uid(),text:'Try the Claude AI tab — ask anything',due:today(),priority:'high',done:false},
     {id:uid(),text:'Try the Claude AI tab',due:'',priority:'med',done:false},
     {id:uid(),text:'Export your data to Excel',due:'',priority:'low',done:false},
   ];
@@ -828,18 +792,8 @@ if(!state.notes.length&&!state.tasks.length&&!state.appts.length){
   saveLocal();renderAll();
 }
 
-// Check if opened via shared link — pull from that bin
-const urlBinId=getBinIdFromURL();
-if(urlBinId&&urlBinId!==state.binId){
-  state.binId=urlBinId;saveLocal();
-  setSyncStatus('syncing','Loading…');
-  pullBin().then(()=>showToast('Data loaded from cloud ✓'));
-}else if(state.binId){
-  pullBin();
-}else{
-  setSyncStatus('offline','Local only');
-}
-startPolling();
+// Auto-connect Firebase on every device — no setup, no login, no steps
+initFirebase();
 </script>
 </body>
 </html>
